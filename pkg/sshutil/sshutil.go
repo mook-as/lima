@@ -263,17 +263,23 @@ func SSHOpts(sshPath, instDir, username string, useDotSSH, forwardAgent, forward
 	if err != nil {
 		return nil, err
 	}
-	controlPath := fmt.Sprintf(`ControlPath="%s"`, controlSock)
-	if runtime.GOOS == "windows" {
-		controlSock = ioutilx.CanonicalWindowsPath(controlSock)
-		controlPath = fmt.Sprintf(`ControlPath='%s'`, controlSock)
+	// guest and host have the same username, but we should specify the username explicitly (#85)
+	opts = append(opts, fmt.Sprintf("User=%s", username))
+
+	// The OpenSSH that ships with Windows doesn't support ControlPath.
+	// https://github.com/PowerShell/Win32-OpenSSH/issues/1328
+	if DetectOpenSSHVersion(sshPath).Metadata != "Windows" {
+		controlPath := fmt.Sprintf(`ControlPath="%s"`, controlSock)
+		if runtime.GOOS == "windows" {
+			controlSock = ioutilx.CanonicalWindowsPath(controlSock)
+			controlPath = fmt.Sprintf(`ControlPath='%s'`, controlSock)
+		}
+		opts = append(opts,
+			"ControlMaster=auto",
+			controlPath,
+			"ControlPersist=yes",
+		)
 	}
-	opts = append(opts,
-		fmt.Sprintf("User=%s", username), // guest and host have the same username, but we should specify the username explicitly (#85)
-		"ControlMaster=auto",
-		controlPath,
-		"ControlPersist=yes",
-	)
 	if forwardAgent {
 		opts = append(opts, "ForwardAgent=yes")
 	}
@@ -297,7 +303,7 @@ func SSHArgsFromOpts(opts []string) []string {
 }
 
 func ParseOpenSSHVersion(version []byte) *semver.Version {
-	regex := regexp.MustCompile(`^OpenSSH_(\d+\.\d+)(?:p(\d+))?\b`)
+	regex := regexp.MustCompile(`^OpenSSH_[^\s\d]*(\d+\.\d+)(?:p(\d+))?\b`)
 	matches := regex.FindSubmatch(version)
 	if len(matches) == 3 {
 		if len(matches[2]) == 0 {
@@ -346,6 +352,9 @@ func DetectOpenSSHVersion(ssh string) semver.Version {
 		logrus.Warnf("failed to run %v: stderr=%q", cmd.Args, stderr.String())
 	} else {
 		v = *ParseOpenSSHVersion(stderr.Bytes())
+		if v.Metadata == "" && strings.HasPrefix(stderr.String(), "OpenSSH_for_Windows_") {
+			v.Metadata = "Windows"
+		}
 		logrus.Debugf("OpenSSH version %s detected", v)
 		sshVersionsRW.Lock()
 		sshVersions[exe] = &v
