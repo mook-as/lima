@@ -18,7 +18,7 @@ import (
 )
 
 // startVM calls WSL to start a VM.
-func startVM(ctx context.Context, distroName string) error {
+func startVM(ctx context.Context, distroName string, errCh chan <-error) error {
 	out, err := executil.RunUTF16leCommand([]string{
 		"wsl.exe",
 		"--distribution",
@@ -28,6 +28,7 @@ func startVM(ctx context.Context, distroName string) error {
 		return fmt.Errorf("failed to run `wsl.exe --distribution %s`: %w (out=%q)",
 			distroName, err, string(out))
 	}
+	keepAlive(ctx, distroName, errCh)
 	return nil
 }
 
@@ -143,11 +144,10 @@ func keepAlive(ctx context.Context, distroName string, errCh chan<- error) {
 	keepAliveCmd := exec.CommandContext(
 		ctx,
 		"wsl.exe",
-		"-d",
+		"--distribution",
 		distroName,
-		"bash",
-		"-c",
-		"nohup sleep 2147483647d >/dev/null 2>&1",
+		"sleep",
+		"inf",
 	)
 
 	go func() {

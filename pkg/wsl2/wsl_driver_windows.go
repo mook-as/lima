@@ -122,7 +122,7 @@ func (l *LimaWslDriver) Start(ctx context.Context) (chan error, error) {
 
 	errCh := make(chan error)
 
-	if err := startVM(ctx, distroName); err != nil {
+	if err := startVM(ctx, distroName, errCh); err != nil {
 		return nil, err
 	}
 
@@ -135,8 +135,6 @@ func (l *LimaWslDriver) Start(ctx context.Context) (chan error, error) {
 	); err != nil {
 		return nil, err
 	}
-
-	keepAlive(ctx, distroName, errCh)
 
 	return errCh, err
 }
