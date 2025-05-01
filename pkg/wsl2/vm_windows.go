@@ -4,6 +4,7 @@
 package wsl2
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
 	"fmt"
@@ -31,6 +32,7 @@ func startVM(ctx context.Context, distroName string) error {
 		return fmt.Errorf("failed to run `wsl.exe --distribution %s`: %w (out=%q)",
 			distroName, err, string(out))
 	}
+	logrus.Infof("started WSL distribution: %s", out)
 	return nil
 }
 
@@ -71,6 +73,15 @@ var limaBoot string
 
 // provisionVM starts Lima's boot process inside an already imported VM.
 func provisionVM(ctx context.Context, instanceDir, instanceName, distroName string, errCh chan<- error) error {
+	(func(){
+		c := exec.CommandContext(ctx, "wsl.exe", "-d", distroName, "/usr/bin/env")
+		o, e := c.CombinedOutput()
+		logrus.Debugf("ran %v -> %s", c.Args, e)
+		for _, line := range strings.Split(string(o), "\n") {
+			logrus.Debugf("%s", line)
+		}
+	})()
+
 	ciDataPath := filepath.Join(instanceDir, filenames.CIDataISODir)
 	m := map[string]string{
 		"CIDataPath": ciDataPath,
@@ -93,7 +104,7 @@ func provisionVM(ctx context.Context, instanceDir, instanceName, distroName stri
 	}
 	// path should be quoted and use \\ as separator
 	bootFileWSLPath := strconv.Quote(limaBootFileWinPath)
-	limaBootFilePathOnLinuxB, err := exec.Command(
+	cmd := exec.Command(
 		"wsl.exe",
 		"-d",
 		distroName,
@@ -101,12 +112,15 @@ func provisionVM(ctx context.Context, instanceDir, instanceName, distroName stri
 		"-c",
 		fmt.Sprintf("wslpath -u %s", bootFileWSLPath),
 		bootFileWSLPath,
-	).Output()
+	)
+	var buf bytes.Buffer
+	cmd.Stderr = &buf
+	limaBootFilePathOnLinuxB, err := cmd.Output()
 	if err != nil {
 		os.RemoveAll(limaBootFileWinPath)
 		// this can return an error with an exit code, which causes it not to be logged
 		// because main.handleExitCoder() traps it, so wrap the error
-		return fmt.Errorf("failed to run wslpath command: %w", err)
+		return fmt.Errorf("failed to run wslpath command: %w (%s) [%+v]", err, buf.String(), cmd.Args)
 	}
 	limaBootFileLinuxPath := strings.TrimSpace(string(limaBootFilePathOnLinuxB))
 	go func() {
