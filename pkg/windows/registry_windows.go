@@ -4,6 +4,7 @@
 package windows
 
 import (
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"slices"
@@ -94,6 +95,32 @@ func IsVSockPortFree(port int) (bool, error) {
 	}
 
 	return true, nil
+}
+
+// IsWSLInstalled checks whether WSL is (probably) installed.
+func IsWSLInstalled() (bool, error) {
+	key, err := registry.OpenKey(
+		registry.LOCAL_MACHINE,
+		wslDistroInfoPrefix,
+		registry.QUERY_VALUE,
+	)
+	if err != nil {
+		if errors.Is(err, registry.ErrNotExist) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to open WSL registry key: %w", err)
+	}
+	defer key.Close()
+
+	keyInfo, err := key.Stat()
+	if err != nil {
+		return false, fmt.Errorf("failed to stat WSL registry key: %w", err)
+	}
+
+	// The key should exist even if WSL is not installed; however, installing
+	// WSL creates subkeys ("MSI", and "Plugins"), so assume WSL is installed if
+	// there are any subkeys.
+	return keyInfo.SubKeyCount > 0, nil
 }
 
 // GetDistroID returns a DistroId GUID corresponding to a Lima instance name.
