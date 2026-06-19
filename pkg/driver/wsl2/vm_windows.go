@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"unsafe"
@@ -236,9 +237,10 @@ func getWslStatus(ctx context.Context, instName string) (string, error) {
 	}
 	if err := wslIsDistributionRegistered.Find(); err != nil {
 		// Given that WSL is installed, this should not happen.
-		return limatype.StatusBroken, errWSLNotInstalled
+		return limatype.StatusBroken, fmt.Errorf("failed to load WSL API: %w", err)
 	}
 	isRegistered, _, _ := wslIsDistributionRegistered.Call(uintptr(unsafe.Pointer(distroNameUTF16)))
+	runtime.KeepAlive(distroNameUTF16)
 	if isRegistered == 0 {
 		// WSL distribution is not installed.
 		return limatype.StatusUninitialized, nil

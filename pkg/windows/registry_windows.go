@@ -17,7 +17,7 @@ import (
 const (
 	guestCommunicationsPrefix = `SOFTWARE\Microsoft\Windows NT\CurrentVersion\Virtualization\GuestCommunicationServices`
 	magicVSOCKSuffix          = "-facb-11e6-bd58-64006a7986d3"
-	wslDistroInfoPrefix       = `SOFTWARE\Microsoft\Windows\CurrentVersion\Lxss`
+	wslInfoKeyPath            = `SOFTWARE\Microsoft\Windows\CurrentVersion\Lxss`
 )
 
 // AddVSockRegistryKey makes a vsock server running on the host accessible in guests.
@@ -101,7 +101,7 @@ func IsVSockPortFree(port int) (bool, error) {
 func IsWSLInstalled() (bool, error) {
 	key, err := registry.OpenKey(
 		registry.LOCAL_MACHINE,
-		wslDistroInfoPrefix,
+		wslInfoKeyPath,
 		registry.QUERY_VALUE,
 	)
 	if err != nil {
@@ -127,13 +127,13 @@ func IsWSLInstalled() (bool, error) {
 func GetDistroID(name string) (string, error) {
 	rootKey, err := registry.OpenKey(
 		registry.CURRENT_USER,
-		wslDistroInfoPrefix,
+		wslInfoKeyPath,
 		registry.READ,
 	)
 	if err != nil {
 		return "", fmt.Errorf(
 			"failed to open Lxss key (%s): %w",
-			wslDistroInfoPrefix,
+			wslInfoKeyPath,
 			err,
 		)
 	}
@@ -141,22 +141,19 @@ func GetDistroID(name string) (string, error) {
 
 	keys, err := rootKey.ReadSubKeyNames(-1)
 	if err != nil {
-		return "", fmt.Errorf("failed to read subkey names for %s: %w", wslDistroInfoPrefix, err)
+		return "", fmt.Errorf("failed to read subkey names for %s: %w", wslInfoKeyPath, err)
 	}
 
 	var out string
 	for _, k := range keys {
-		subKey, err := registry.OpenKey(
-			registry.CURRENT_USER,
-			fmt.Sprintf(`%s\%s`, wslDistroInfoPrefix, k),
-			registry.READ,
-		)
+		subKey, err := registry.OpenKey(rootKey, k, registry.READ)
 		if err != nil {
-			return "", fmt.Errorf("failed to read subkey %q for key %q: %w", k, wslDistroInfoPrefix, err)
+			return "", fmt.Errorf("failed to read subkey %q for key %q: %w", k, wslInfoKeyPath, err)
 		}
 		dn, _, err := subKey.GetStringValue("DistributionName")
+		subKey.Close()
 		if err != nil {
-			return "", fmt.Errorf("failed to read 'DistributionName' value for subkey %q of %q: %w", k, wslDistroInfoPrefix, err)
+			return "", fmt.Errorf("failed to read 'DistributionName' value for subkey %q of %q: %w", k, wslInfoKeyPath, err)
 		}
 		if dn == name {
 			out = k
